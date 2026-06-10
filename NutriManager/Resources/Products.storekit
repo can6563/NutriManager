@@ -1,0 +1,38 @@
+{
+  "identifier" : "B1A2C3D4-0001-4E5F-9A8B-NUTRIMANAGER1",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "1100",
+      "familyShareable" : false,
+      "internalID" : "1001",
+      "localizations" : [
+        {
+          "description" : "오늘 하루 AI 식단 무제한 생성",
+          "displayName" : "프리미엄 (1일 이용권)",
+          "locale" : "ko_KR"
+        }
+      ],
+      "productID" : "com.nutrimanager.premium.daily",
+      "referenceName" : "Premium Daily Pass",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "ko_KR",
+    "_storefront" : "KOR",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
