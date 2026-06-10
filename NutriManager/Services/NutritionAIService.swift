@@ -57,8 +57,46 @@ struct NutritionAIService {
         }
     }
 
-    /// 실제 Gemini 호출부.
+    /// 일시적 오류(네트워크/5xx/429/빈 응답)는 짧게 재시도한 뒤에야 폴백으로 넘긴다.
     private func callGemini(
+        request: PlanRequest,
+        inventory: [Ingredient],
+        recentDishes: [String],
+        previousResult: [MealSuggestion]?,
+        revisionNote: String?
+    ) async throws -> [MealSuggestion] {
+        let maxAttempts = 2
+        var lastError: Error = AIError.emptyContent
+        for attempt in 1...maxAttempts {
+            do {
+                return try await singleCall(
+                    request: request,
+                    inventory: inventory,
+                    recentDishes: recentDishes,
+                    previousResult: previousResult,
+                    revisionNote: revisionNote
+                )
+            } catch {
+                lastError = error
+                guard attempt < maxAttempts, isRetryable(error) else { throw error }
+                try? await Task.sleep(nanoseconds: 700_000_000)
+            }
+        }
+        throw lastError
+    }
+
+    /// 재시도할 가치가 있는 일시적 오류인지 판단.
+    private func isRetryable(_ error: Error) -> Bool {
+        guard let e = error as? AIError else { return false }
+        switch e {
+        case .transport, .emptyContent: return true
+        case .badResponse(let code): return code >= 500 || code == 429
+        case .missingKey, .decodeFailed: return false
+        }
+    }
+
+    /// 실제 Gemini 단건 호출부.
+    private func singleCall(
         request: PlanRequest,
         inventory: [Ingredient],
         recentDishes: [String],
@@ -83,7 +121,11 @@ struct NutritionAIService {
                     revisionNote: revisionNote
                 ))])
             ],
-            generationConfig: .init(temperature: 0.8, responseMimeType: "application/json")
+            generationConfig: .init(
+                temperature: 0.7,
+                responseMimeType: "application/json",
+                responseSchema: GeminiRequest.mealResponseSchema
+            )
         )
 
         var req = URLRequest(url: url)
@@ -159,10 +201,55 @@ private struct GeminiRequest: Encodable {
     struct GenerationConfig: Encodable {
         let temperature: Double
         let responseMimeType: String
+        let responseSchema: SchemaNode
     }
     let systemInstruction: SystemInstruction
     let contents: [Content]
     let generationConfig: GenerationConfig
+
+    /// Gemini 구조화 출력 스키마 노드(OpenAPI 서브셋). 자기참조가 필요해 클래스로 둔다.
+    /// 옵셔널 필드는 합성된 Encodable이 nil이면 자동 생략(encodeIfPresent)한다.
+    final class SchemaNode: Encodable {
+        let type: String
+        let items: SchemaNode?
+        let properties: [String: SchemaNode]?
+        let required: [String]?
+        let propertyOrdering: [String]?
+
+        init(type: String,
+             items: SchemaNode? = nil,
+             properties: [String: SchemaNode]? = nil,
+             required: [String]? = nil,
+             propertyOrdering: [String]? = nil) {
+            self.type = type
+            self.items = items
+            self.properties = properties
+            self.required = required
+            self.propertyOrdering = propertyOrdering
+        }
+    }
+
+    /// 응답이 MealPlanResponse 형태와 정확히 일치하도록 강제하는 스키마.
+    static let mealResponseSchema: SchemaNode = {
+        let string = SchemaNode(type: "STRING")
+        let stringArray = SchemaNode(type: "ARRAY", items: SchemaNode(type: "STRING"))
+        let meal = SchemaNode(
+            type: "OBJECT",
+            properties: [
+                "mealType": string,
+                "dishes": stringArray,
+                "usedIngredients": stringArray,
+                "estimatedCost": SchemaNode(type: "NUMBER")
+            ],
+            required: ["mealType", "dishes", "usedIngredients", "estimatedCost"],
+            propertyOrdering: ["mealType", "dishes", "usedIngredients", "estimatedCost"]
+        )
+        return SchemaNode(
+            type: "OBJECT",
+            properties: ["meals": SchemaNode(type: "ARRAY", items: meal)],
+            required: ["meals"]
+        )
+    }()
 }
 
 private struct GeminiResponse: Decodable {
