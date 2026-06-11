@@ -1,3 +1,10 @@
+
+>>시연영상 유튜브 링크입니다 https://www.youtube.com/watch?v=1_05SEOLMoQ
+
+
+
+
+
 # 🥗 NutriManager — 영양사용 급식 관리 앱
 
 > **▶️ 시연 영상:** _(여기에 유튜브 링크를 넣으세요)_
